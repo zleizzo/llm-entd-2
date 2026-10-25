@@ -13,3 +13,15 @@ $PY -m entd.eval $CFG --stages queries,search,proj,radius,fidelity,anchors
 $PY -m entd.eval $CFG --stages rerank        # ~20-30 min (1000 queries/set x 1024 candidates)
 $PY -m entd.eval $CFG --stages baselines,report
 # Persist: rsync runs/tinystories_mvp/results /workspace/vol/   (the store itself can be regenerated)
+
+# ---- persist results and optionally stop the pod ----------------------------------------------
+# Results are small (a few hundred MB); copy them off the container disk if a network volume is mounted.
+if [[ -d /workspace/vol ]]; then
+  mkdir -p /workspace/vol/entd2 && cp -r runs/tinystories_mvp/results /workspace/vol/entd2/ && cp mvp.log /workspace/vol/entd2/ 2>/dev/null || true
+fi
+# STOP_POD=1 stops the pod (container disk is kept and still billed at storage rates; delete it from the
+# console when done). Needs RUNPOD_API_KEY exported before launching; RUNPOD_POD_ID is set by RunPod.
+if [[ "${STOP_POD:-0}" == "1" ]]; then
+  runpodctl config --apiKey "$RUNPOD_API_KEY" >/dev/null 2>&1 || true
+  runpodctl stop pod "$RUNPOD_POD_ID"
+fi

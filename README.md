@@ -42,6 +42,15 @@ nohup bash scripts/run_mvp.sh > mvp.log 2>&1 &  # train (~1 h) -> embed (~15 min
 tail -f mvp.log
 ```
 
+To stop the pod automatically when the run finishes (results are copied to /workspace/vol first if mounted):
+
+```bash
+export RUNPOD_API_KEY=...        # from the RunPod console, Settings -> API Keys
+STOP_POD=1 nohup bash scripts/run_mvp.sh > mvp.log 2>&1 &
+```
+
+`runpodctl stop` keeps the container disk (billed at storage rates); delete the pod from the console afterwards.
+
 Stages can be re-run individually, e.g. `python -m entd.eval configs/tinystories_mvp.yaml --stages rerank,report`.
 Everything under `data/` and `runs/` is regenerable; only `runs/tinystories_mvp/results/` needs persisting.
 
