@@ -1,0 +1,45 @@
+# Large Option B: Pythia (public, exact training order) over a contiguous slice of the preshuffled Pile.
+# Requires: the pythia repo's utils/mmap_dataset.py, the pile_deduped_pythia_preshuffled .bin/.idx shards,
+# and a pre-tokenized Pile validation stream. See scripts/run_large_b.sh.
+name: pythia_410m_pile5b
+data:
+  kind: pythia_pile
+  block_size: 2048
+  untrained_frac: 0.0        # the model trained on everything; Pile-val is the untrained store
+  pythia:
+    bin_prefix: /workspace/pile/document
+    mmap_module: /workspace/pythia/utils/mmap_dataset.py
+    start_sample: 20480000    # step 20000 x 1024 samples/step (first-epoch region for deduped)
+    n_samples: 2440000        # ~5B tokens
+    val_bin: /workspace/pile/val.bin
+model:
+  kind: hf
+  hf_name: EleutherAI/pythia-410m-deduped
+embed:
+  code: pca
+  d: 128
+  store_dtype: int8
+  h_subset_frac: 0.0
+  exact_sample: 50000
+  pca_sample_windows: 1024
+  batch_windows: 8
+eval:
+  n_queries_heldout: 25000
+  n_queries_train: 25000
+  k_grid: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 4096, 16384]
+  K: 16384
+  radii: [0.1, 0.2, 0.3, 0.5, 0.7]
+  rerank_queries: 2500
+  rerank_K: 256
+  coverage_fracs: [0.1, 0.01]
+  substore_frac: 0.01
+  leak_L: 32
+  dedup_ngram: 50
+  ngram_max_n: 32
+  ngram_min_counts: [5, 64]
+  null_draws: 200
+  naive_null_draws: 10
+  fidelity_queries: 2000
+  fidelity_d_sweep: [32, 64, 128]
+  query_batch: 32
+  chunk: 524288

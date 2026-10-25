@@ -1,0 +1,12 @@
+torch>=2.2
+numpy
+pyyaml
+pandas
+pyarrow
+matplotlib
+tqdm
+tiktoken
+datasets
+pydivsufsort
+# Large Option B only:
+# transformers

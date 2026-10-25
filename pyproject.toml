@@ -1,0 +1,12 @@
+[project]
+name = "entd"
+version = "0.1.0"
+description = "Next-token-distribution embeddings of a pretraining corpus: nearest-neighbor calibration experiments"
+requires-python = ">=3.10"
+dependencies = [
+  "torch>=2.2", "numpy", "pyyaml", "pandas", "pyarrow", "matplotlib", "tqdm",
+  "tiktoken", "datasets", "pydivsufsort",
+]
+
+[tool.setuptools]
+packages = ["entd"]

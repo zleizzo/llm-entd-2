@@ -1,0 +1,54 @@
+# Large Option A: self-trained GPT-2 medium on 5B FineWeb-Edu tokens, full coverage.
+# Train with: torchrun --nproc_per_node 8 -m entd.train configs/fineweb_large.yaml
+name: fineweb_large
+data:
+  kind: fineweb_edu
+  block_size: 1024
+  untrained_frac: 0.1
+  n_train_tokens: 5000000000
+  n_val_tokens: 100000000
+  num_proc: 32
+model:
+  n_layer: 24
+  n_head: 16
+  n_embd: 1024
+  dropout: 0.0
+train:
+  epochs: 1
+  batch_size: 512          # global; 8 ranks x 64 windows x 1024 tokens = 0.5M tokens/step
+  lr: 3.0e-4
+  min_lr: 3.0e-5
+  warmup_steps: 700
+  beta2: 0.95
+  eval_interval: 500
+  eval_batches: 8
+  log_interval: 10
+  compile: true
+embed:
+  code: pca
+  d: 128
+  store_dtype: int8          # 5B x 128 B = 640 GB  (+ 20 GB norms, 10 GB next ids)
+  h_subset_frac: 0.0         # raw h would be 1 TB; use the h-code path if the MVP shows it is needed
+  exact_sample: 50000
+  pca_sample_windows: 2048
+  batch_windows: 16
+eval:
+  n_queries_heldout: 25000
+  n_queries_train: 25000
+  k_grid: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 4096, 16384]
+  K: 16384
+  radii: [0.1, 0.2, 0.3, 0.5, 0.7]
+  rerank_queries: 2500
+  rerank_K: 256
+  coverage_fracs: [0.1, 0.01, 0.001]
+  substore_frac: 0.01
+  leak_L: 32
+  dedup_ngram: 50
+  ngram_max_n: 32
+  ngram_min_counts: [5, 64]
+  null_draws: 200
+  naive_null_draws: 10
+  fidelity_queries: 2000
+  fidelity_d_sweep: [32, 64, 128]
+  query_batch: 64
+  chunk: 524288

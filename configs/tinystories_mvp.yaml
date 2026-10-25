@@ -1,0 +1,51 @@
+# Tier 1: the MVP proper. TinyStories (GPT-2 tokenizer), ~50M-param GPT, one 80GB GPU.
+name: tinystories_mvp
+data:
+  kind: tinystories
+  block_size: 512
+  untrained_frac: 0.1
+  num_proc: 16
+model:
+  n_layer: 8
+  n_head: 8
+  n_embd: 512
+  dropout: 0.0
+train:
+  epochs: 2
+  batch_size: 64
+  lr: 6.0e-4
+  min_lr: 6.0e-5
+  warmup_steps: 500
+  beta2: 0.95
+  eval_interval: 1000
+  eval_batches: 20
+  log_interval: 50
+  compile: true
+embed:
+  code: pca
+  d: 128
+  store_dtype: float16       # 474M x 128 x 2 B = 121 GB
+  h_subset_frac: 0.1         # 47M x 512 x 2 B = 47 GB
+  exact_sample: 20000        # 20k x 50304 x 2 B = 2 GB
+  pca_sample_windows: 4096
+  batch_windows: 32
+eval:
+  n_queries_heldout: 10000
+  n_queries_train: 10000
+  k_grid: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 4096]
+  K: 4096
+  radii: [0.1, 0.2, 0.3, 0.5, 0.7]
+  rerank_queries: 1000
+  rerank_K: 1024
+  coverage_fracs: [0.1, 0.01, 0.001]
+  substore_frac: 0.01
+  leak_L: 32
+  dedup_ngram: 50
+  ngram_max_n: 32
+  ngram_min_counts: [5, 64]
+  null_draws: 200
+  naive_null_draws: 20
+  fidelity_queries: 2000
+  fidelity_d_sweep: [16, 32, 64, 128]
+  query_batch: 128
+  chunk: 262144

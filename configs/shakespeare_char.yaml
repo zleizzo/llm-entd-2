@@ -1,0 +1,46 @@
+# Tier 0: laptop smoke test. Char-level Shakespeare, exact 65-d distributions.
+name: shakespeare_char
+data:
+  kind: shakespeare_char
+  block_size: 256
+  untrained_frac: 0.1
+model:
+  n_layer: 6
+  n_head: 6
+  n_embd: 384
+  dropout: 0.1
+train:
+  epochs: 30            # 1M chars / (64*256) ≈ 61 steps per epoch; ~1800 steps total
+  batch_size: 64
+  lr: 1.0e-3
+  min_lr: 1.0e-4
+  warmup_steps: 100
+  beta2: 0.99
+  eval_interval: 200
+  eval_batches: 5
+  log_interval: 50
+embed:
+  code: exact           # V = 65: store the full sqrt-distribution, no compression
+  store_dtype: float32
+  h_subset_frac: 0.1
+  exact_sample: 20000
+  batch_windows: 64
+eval:
+  n_queries_heldout: 1500
+  n_queries_train: 1500
+  k_grid: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+  K: 2048
+  radii: [0.1, 0.2, 0.3, 0.5, 0.7]
+  rerank_queries: 150
+  rerank_K: 512
+  coverage_fracs: [0.1, 0.01]
+  substore_frac: 0.1
+  leak_L: 32
+  dedup_ngram: 50
+  ngram_max_n: 32
+  ngram_min_counts: [5, 64]
+  null_draws: 200
+  naive_null_draws: 20
+  fidelity_queries: 1000
+  fidelity_d_sweep: [8, 16, 32, 65]
+  query_batch: 256
