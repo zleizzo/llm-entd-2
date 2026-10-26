@@ -166,13 +166,18 @@ def build_model(cfg, meta, device):
     return GPT(c).to(device)
 
 
-def load_checkpoint(cfg, meta, device):
+def checkpoint_path(cfg):
+    """model.checkpoint if set (any .pt written by entd.train), else work_dir/ckpt.pt."""
     import os
+    return cfg["model"].get("checkpoint") or os.path.join(cfg["work_dir"], "ckpt.pt")
+
+
+def load_checkpoint(cfg, meta, device):
     if cfg["model"].get("kind", "gpt") == "hf":
         m = HFCausalLM(cfg["model"]["hf_name"]).to(device)
         m.eval()
         return m
-    ck = torch.load(os.path.join(cfg["work_dir"], "ckpt.pt"), map_location="cpu")
+    ck = torch.load(checkpoint_path(cfg), map_location="cpu")
     m = GPT(GPTConfig(**ck["model_args"]))
     sd = {k.replace("_orig_mod.", ""): v for k, v in ck["model"].items()}
     m.load_state_dict(sd)

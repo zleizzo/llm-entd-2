@@ -212,10 +212,15 @@ def make_schedule(trained_wids, n_windows, epochs, batch_size, seed):
         n_b = len(perm) // batch_size
         steps.append(perm[: n_b * batch_size].reshape(n_b, batch_size))
     sched = np.concatenate(steps).astype(np.int64)
+    return sched, last_seen_at(sched, len(sched), n_windows)
+
+
+def last_seen_at(sched, step, n_windows):
+    """Last step < `step` at which each window was seen (-1 = not yet), for a checkpoint taken after `step` steps."""
     last_seen = np.full(n_windows, -1, dtype=np.int64)
-    for s in range(len(sched)):
+    for s in range(min(step, len(sched))):
         last_seen[sched[s]] = s
-    return sched, last_seen
+    return last_seen
 
 
 def ensure_schedule(cfg, tables):

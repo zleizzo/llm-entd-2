@@ -32,24 +32,36 @@ scripts/run_tier0.sh            # train → embed → eval → runs/shakespeare_
 
 ## RunPod: running the MVP on a fresh pod
 
-Pod: one A100 or H100 80GB, PyTorch CUDA image, >= 300 GB container disk (store 121 GB + h-subset 47 GB +
-data + headroom); optionally a network volume at /workspace/vol to persist `runs/*/results`.
+Pod: one A100 or H100 80GB, PyTorch CUDA image, **>= 450 GB container disk** (two models x (121 GB store +
+47 GB h-subset) + data + headroom), plus a small (50 GB) **network volume at /workspace** that receives the
+persisted artifacts. Work on the container disk (local NVMe): on many hosts the /workspace pod volume is
+NFS-backed at ~100 MB/s writes, which makes the embed stage several times slower.
 
 ```bash
-git clone https://github.com/zleizzo/llm-entd-2.git /workspace/entd2 && cd /workspace/entd2
+git clone https://github.com/zleizzo/llm-entd-2.git /root/entd2 && cd /root/entd2
 bash scripts/setup_pod.sh                       # installs the package, runs the unit tests
-nohup bash scripts/run_mvp.sh > mvp.log 2>&1 &  # train (~1 h) -> embed (~15 min) -> eval (~1 h) -> report
-tail -f mvp.log
+LOG=/root/mvp.log nohup bash scripts/run_mvp.sh > /root/mvp.log 2>&1 &
+tail -f /root/mvp.log
 ```
 
-To stop the pod automatically when the run finishes (results are copied to /workspace/vol first if mounted):
+`run_mvp.sh` trains for 2 epochs (~1 h; `entd.train` saves a model-only `ckpt_epoch<k>.pt` at every epoch
+boundary), then runs embed + the full eval suite twice: on the final model (`configs/tinystories_mvp.yaml`,
+`runs/tinystories_mvp/`) and on the epoch-1 checkpoint (`configs/tinystories_mvp_ep1.yaml`, which `extends`
+the main config and sets `model.checkpoint`; `runs/tinystories_mvp_ep1/`). Both share the data, window
+tables, and trained/untrained split; the epoch-1 eval derives its `last_seen_step` from the main run's
+schedule truncated at that checkpoint's step. After training and after each eval the small artifacts
+(`results/`, checkpoints, `train_log.jsonl`, `projection.pt`, `schedule.npy`, the log) are copied to
+`PERSIST_DIR` (default `/workspace/entd2`), also on failure.
+
+To stop the pod automatically when everything is done:
 
 ```bash
 export RUNPOD_API_KEY=...        # from the RunPod console, Settings -> API Keys
-STOP_POD=1 nohup bash scripts/run_mvp.sh > mvp.log 2>&1 &
+STOP_POD=1 LOG=/root/mvp.log nohup bash scripts/run_mvp.sh > /root/mvp.log 2>&1 &
 ```
 
-`runpodctl stop` keeps the container disk (billed at storage rates); delete the pod from the console afterwards.
+Stopping wipes the container disk (the stores), so only what was persisted to the network volume survives;
+delete the pod from the console afterwards. The stores can be regenerated from the persisted checkpoints.
 
 Stages can be re-run individually, e.g. `python -m entd.eval configs/tinystories_mvp.yaml --stages rerank,report`.
 Everything under `data/` and `runs/` is regenerable; only `runs/tinystories_mvp/results/` needs persisting.

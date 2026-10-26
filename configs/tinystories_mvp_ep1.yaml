@@ -1,0 +1,8 @@
+# Tier 1, epoch-1 model: same data, split, and eval settings as tinystories_mvp.yaml, but embed + eval the
+# checkpoint saved after the first of the two training epochs. Do not run entd.train on this config; run
+# entd.train on tinystories_mvp.yaml (which writes runs/tinystories_mvp/ckpt_epoch1.pt), then
+#   python -m entd.embed configs/tinystories_mvp_ep1.yaml && python -m entd.eval configs/tinystories_mvp_ep1.yaml
+extends: tinystories_mvp.yaml
+name: tinystories_mvp_ep1
+model:
+  checkpoint: runs/tinystories_mvp/ckpt_epoch1.pt

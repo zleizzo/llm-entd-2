@@ -21,6 +21,7 @@ DEFAULTS = {
         "kind": "gpt",                # gpt | hf
         "n_layer": 6, "n_head": 6, "n_embd": 384, "dropout": 0.0, "bias": False,
         "hf_name": None,
+        "checkpoint": None,           # path to a .pt to embed/eval instead of work_dir/ckpt.pt (e.g. an epoch checkpoint)
     },
     "train": {
         "epochs": 1, "batch_size": 64, "lr": 1e-3, "min_lr": 1e-4, "warmup_steps": 100,
@@ -77,9 +78,19 @@ def _deep_update(base, upd):
     return base
 
 
-def load_config(path):
+def _load_yaml(path):
+    """YAML with an optional `extends: other.yaml` (relative to this file) whose values this file overrides."""
     with open(path) as f:
         user = yaml.safe_load(f) or {}
+    base = user.pop("extends", None)
+    if base:
+        base = base if os.path.isabs(base) else os.path.join(os.path.dirname(path), base)
+        user = _deep_update(_load_yaml(base), user)
+    return user
+
+
+def load_config(path):
+    user = _load_yaml(path)
     cfg = _deep_update(copy.deepcopy(DEFAULTS), user)
     cfg["_path"] = path
     cfg["work_dir"] = cfg.get("work_dir") or os.path.join("runs", cfg["name"])

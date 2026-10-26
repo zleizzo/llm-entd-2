@@ -98,6 +98,8 @@ def main(cfg_path):
     eval_offs_val = W_va[: tc["eval_batches"] * tc["batch_size"]]
     eval_offs_tr = W_tr[trained[: tc["eval_batches"] * tc["batch_size"]]]
     total = len(sched)
+    steps_per_epoch = total // max(1, tc["epochs"])   # make_schedule gives exactly epochs * n_b steps
+    plain_cfg = {k: v for k, v in cfg.items() if not k.startswith("_")}
     t0 = time.time()
     model.train()
     for step in range(start, total):
@@ -125,8 +127,15 @@ def main(cfg_path):
             log.write(json.dumps(rec) + "\n")
             log.flush()
             torch.save({"model": raw.state_dict(), "optimizer": opt.state_dict(), "step": step + 1,
-                        "model_args": raw.config.__dict__, "cfg": {k: v for k, v in cfg.items() if not k.startswith("_")}},
-                       ck_path)
+                        "model_args": raw.config.__dict__, "cfg": plain_cfg}, ck_path)
+        if master and steps_per_epoch > 0 and (step + 1) % steps_per_epoch == 0:
+            # Model-only snapshot at the end of each epoch (ckpt_epoch1.pt, ...); point another config's
+            # model.checkpoint at it to embed/eval an earlier model with the same data/split.
+            ep = (step + 1) // steps_per_epoch
+            torch.save({"model": raw.state_dict(), "step": step + 1, "epoch": ep,
+                        "model_args": raw.config.__dict__, "cfg": plain_cfg},
+                       os.path.join(cfg["work_dir"], f"ckpt_epoch{ep}.pt"))
+            print(f"[train] saved ckpt_epoch{ep}.pt at step {step + 1}", flush=True)
     if ddp:
         torch.distributed.destroy_process_group()
 

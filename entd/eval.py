@@ -12,10 +12,10 @@ import pandas as pd
 import torch
 
 from .config import load_config
-from .data import ensure_tables, load_stream, prepare
+from .data import ensure_tables, load_stream, prepare, last_seen_at
 from .knn import radius_hist, search
 from .metrics import ece_top1, entropy, hell2, hist_from_ids, js, naive_null_js, tv
-from .model import load_checkpoint
+from .model import checkpoint_path, load_checkpoint
 from .projection import Code, MomentAccumulator, knn_sets, pairwise_d2, random_projection, recall_at_k
 from .rerank import dists_for_windows, rerank_query
 from .store import ArraySource, Store
@@ -43,6 +43,15 @@ class Ctx:
         self.store = {"train": Store(os.path.join(self.wd, "store_train")), "val": Store(os.path.join(self.wd, "store_val"))}
         self.split = self.tables["split_train"]
         ls = os.path.join(self.wd, "last_seen_step.npy")
+        if not os.path.exists(ls):
+            # model.checkpoint from another run (e.g. its epoch-1 checkpoint): last-seen steps up to that
+            # checkpoint's step, taken from that run's schedule.
+            ckp = checkpoint_path(cfg)
+            sp = os.path.join(os.path.dirname(ckp), "schedule.npy")
+            if os.path.exists(sp):
+                step = int(torch.load(ckp, map_location="cpu").get("step", 0))
+                np.save(ls, last_seen_at(np.load(sp), step, len(self.W["train"])))
+                print(f"[eval] last_seen_step derived from {sp} at step {step}", flush=True)
         self.last_seen = np.load(ls) if os.path.exists(ls) else None
         self.k_grid = [k for k in self.ev["k_grid"] if k <= self.ev["K"]]
         self.radii = list(self.ev["radii"])
