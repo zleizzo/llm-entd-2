@@ -94,7 +94,9 @@ def main(cfg_path):
             if master:
                 print("[train] checkpoint already complete", flush=True)
             return
-        raw.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in ck["model"].items()})
+        # checkpoints hold the plain module's keys (any "_orig_mod." stripped); load into the plain module, which is
+        # raw._orig_mod when torch.compile wrapped it (the wrapper's state_dict expects the prefix).
+        getattr(raw, "_orig_mod", raw).load_state_dict({k.replace("_orig_mod.", ""): v for k, v in ck["model"].items()})
         opt.load_state_dict(ck["optimizer"])
         start = ck["step"]
         if master:
