@@ -43,7 +43,7 @@ eval:
   dedup_ngram: 50
   ngram_max_n: 32
   ngram_min_counts: [5, 64]
-  null_draws: 200
+  null_draws: 20             # per-neighbor null draws in rerank; 200 made rerank ~6 s/query (~3.3 h per model)
   naive_null_draws: 20
   fidelity_queries: 2000
   fidelity_d_sweep: [16, 32, 64, 128]
