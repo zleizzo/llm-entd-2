@@ -58,7 +58,7 @@ the GPU (`eval.chunk` is kept at 131072 so two search processes fit in 80 GB). E
 the small artifacts (`results/`, checkpoints, `train_log.jsonl`, `pipeline.log`, `projection.pt`,
 `schedule.npy`, the main log) are copied to `PERSIST_DIR` (default `/workspace/entd2`), also on failure.
 
-To stop the pod automatically when everything is done:
+To stop the pod automatically when the script exits (success or failure):
 
 ```bash
 export RUNPOD_API_KEY=...        # from the RunPod console, Settings -> API Keys

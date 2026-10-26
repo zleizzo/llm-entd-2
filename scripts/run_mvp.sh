@@ -45,7 +45,15 @@ persist() {
   [[ -e "$LOG" ]] && cp "$LOG" "$PERSIST_DIR/" || true
   echo "[persist] synced to $PERSIST_DIR at $(date -u +%FT%TZ)"
 }
-trap persist EXIT   # also on failure, so partial results survive
+# STOP_POD=1: stop the pod when the script exits, on success OR failure (an unattended failure must not bill all
+# night; the stores are wiped with the container disk but everything persisted above lives on the network volume).
+stop_pod() {
+  [[ "${STOP_POD:-0}" == "1" && -n "${RUNPOD_POD_ID:-}" ]] || return 0
+  echo "[stop] stopping pod $RUNPOD_POD_ID (exit status $1)"
+  curl -sf -X POST -H "Authorization: Bearer $RUNPOD_API_KEY" "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID/stop" >/dev/null \
+    || { runpodctl config --apiKey "$RUNPOD_API_KEY" >/dev/null 2>&1 || true; runpodctl stop pod "$RUNPOD_POD_ID"; }
+}
+trap 'rc=$?; persist; stop_pod $rc' EXIT   # persist also on failure, so partial results survive
 
 # embed + full eval for one config, logged to runs/<name>/pipeline.log; persist afterwards.
 run_model() {
@@ -86,11 +94,3 @@ else
   for c in "${CFGS[@]}"; do run_model "$c"; done
 fi
 echo "[run_mvp] all done ($(date -u +%FT%TZ))"
-
-# STOP_POD=1: stop the pod when done. The container disk (stores) is wiped on stop; everything persisted above
-# lives on the network volume. Delete the pod from the console afterwards.
-if [[ "${STOP_POD:-0}" == "1" && -n "${RUNPOD_POD_ID:-}" ]]; then
-  echo "[stop] stopping pod $RUNPOD_POD_ID"
-  curl -sf -X POST -H "Authorization: Bearer $RUNPOD_API_KEY" "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID/stop" >/dev/null \
-    || { runpodctl config --apiKey "$RUNPOD_API_KEY" >/dev/null 2>&1 || true; runpodctl stop pod "$RUNPOD_POD_ID"; }
-fi
