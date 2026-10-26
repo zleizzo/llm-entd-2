@@ -22,15 +22,40 @@ class MomentAccumulator:
         self.s += X.sum(0)
         self.n += X.shape[0]
 
-    def pca(self, d, centered=False):
+    def pca(self, d, centered=False, exact_max_dim=4096):
+        """Top-d eigenpairs (descending) of the (un)centered second-moment matrix.
+        Small matrices: exact CPU double eigh. Large ones (V ~ 50k: a 20 GB double eigh takes an hour or more on CPU):
+        randomized subspace iteration on the accumulator's device, which needs only V x (d + oversample) extra memory."""
         M = self.M / self.n
         mean = self.s / self.n
         if centered:
             M = M - torch.outer(mean, mean)
-        evals, evecs = torch.linalg.eigh(M.cpu().double())   # ascending
-        idx = torch.argsort(evals, descending=True)
-        evals, evecs = evals[idx][:d], evecs[:, idx][:, :d]
+        if M.shape[0] <= exact_max_dim or d > M.shape[0] // 4:
+            evals, evecs = torch.linalg.eigh(M.cpu().double())   # ascending
+            idx = torch.argsort(evals, descending=True)
+            evals, evecs = evals[idx][:d], evecs[:, idx][:, :d]
+        else:
+            evals, evecs = top_eigh(M, d)
         return evecs.float(), evals.float(), (mean.cpu() if centered else None)
+
+
+def top_eigh(M, k, iters=40, oversample=64, seed=0):
+    """Top-k eigenpairs (descending) of a symmetric PSD matrix M by randomized subspace iteration + Rayleigh-Ritz.
+    Runs on M's device in M's dtype (fp32 matmul/QR); the small (k+oversample)^2 eigenproblem is solved in double
+    on CPU. Error of the j-th eigenvector decays like (lambda_{k+oversample} / lambda_j)^iters. Returns CPU tensors."""
+    n = M.shape[0]
+    p = min(n, k + oversample)
+    g = torch.Generator().manual_seed(seed)
+    Q = torch.randn(n, p, generator=g).to(M.device, M.dtype)
+    Q, _ = torch.linalg.qr(Q)
+    for _ in range(iters):
+        Q, _ = torch.linalg.qr(M @ Q)
+    MQ = M @ Q
+    B = (Q.T @ MQ).cpu().double()
+    B = 0.5 * (B + B.T)
+    ev, U = torch.linalg.eigh(B)                      # ascending
+    ev, U = ev.flip(0)[:k], U.flip(1)[:, :k]
+    return ev, Q.cpu().double() @ U
 
 
 def random_projection(V, d, seed):
