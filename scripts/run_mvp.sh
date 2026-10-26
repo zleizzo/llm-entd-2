@@ -57,6 +57,22 @@ stop_pod() {
 }
 trap 'rc=$?; persist; stop_pod $rc' EXIT   # persist also on failure, so partial results survive
 
+# Restore persisted small artifacts (checkpoints, schedule, projections) from PERSIST_DIR into a fresh container disk,
+# so a relaunched pod skips finished training ("checkpoint already complete") and the PCA fits. Never copies results/
+# or stores; local files win.
+restore() {
+  [[ -d "$PERSIST_DIR/runs" ]] || return 0
+  for rd in "$PERSIST_DIR"/runs/*/; do
+    name=$(basename "$rd"); mkdir -p "runs/$name"
+    for src in "$rd"ckpt.pt "$rd"ckpt_epoch*.pt "$rd"schedule.npy "$rd"last_seen_step.npy "$rd"split_train.npy \
+               "$rd"train_log.jsonl "$rd"projection.pt; do
+      [[ -f "$src" && ! -e "runs/$name/$(basename "$src")" ]] && cp "$src" "runs/$name/" && echo "[restore] runs/$name/$(basename "$src")"
+    done
+  done
+  return 0
+}
+restore
+
 # embed + full eval for one config, logged to runs/<name>/pipeline.log; persist afterwards.
 run_model() {
   local cfg=$1 name; name=$(cfg_name "$cfg"); mkdir -p "runs/$name"
