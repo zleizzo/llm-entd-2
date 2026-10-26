@@ -67,8 +67,10 @@ def search(src, Zq, qnorm2, K, radii2=None, exclude=None, keep=None, chunk=26214
         C = b - a
         Zc = src.z_chunk(a, b, device)
         nc = torch.from_numpy(np.ascontiguousarray(src.znorm2[a:b])).to(device).float()
-        d2 = qnorm2[:, None] + nc[None, :] - 2.0 * (Zq @ Zc.T)
-        d2.clamp_(min=0.0)
+        # in place: the broadcast expression `qn[:,None] + nc[None,:] - 2*(Zq @ Zc.T)` materialized ~4 (Q, C) temporaries
+        # (21 GB at Q=20k, C=65k) and OOM'd next to a second eval process
+        d2 = Zq @ Zc.T
+        d2.mul_(-2.0).add_(nc[None, :]).add_(qnorm2[:, None]).clamp_(min=0.0)
         if exclude is not None:
             pos = torch.arange(a, b, device=device)
             m = (pos[None, :] >= lo[:, None]) & (pos[None, :] < hi[:, None])

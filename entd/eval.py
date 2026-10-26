@@ -589,6 +589,8 @@ def main():
     for s in stages:
         if s == "queries":
             continue
+        if ctx.device.type == "cuda":
+            torch.cuda.empty_cache()   # return cached blocks to the device: another eval process may share the GPU
         with Timer(s):
             if s == "search":
                 stage_search(ctx, q)
