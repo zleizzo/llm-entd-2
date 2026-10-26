@@ -22,6 +22,9 @@ PARALLEL=${PARALLEL:-1}
 PERSIST_DIR=${PERSIST_DIR:-/workspace/entd2}
 LOG=${LOG:-mvp.log}
 export HF_HOME=${HF_HOME:-/root/hf}
+# Pods see all host cores (nproc=128) but get a ~16-vCPU cgroup quota; torch would spawn 128 intra-op threads per
+# process and tiny CPU ops then take 100s of ms (measured 3x slowdown of the embed loop). Two pipelines share the quota.
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8} MKL_NUM_THREADS=${MKL_NUM_THREADS:-8}
 
 cfg_name() { $PY -c "import sys; from entd.config import load_config; print(load_config(sys.argv[1])['name'])" "$1"; }
 MAIN_DIR=runs/$(cfg_name "$MAIN")

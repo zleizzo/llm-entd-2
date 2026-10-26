@@ -15,6 +15,8 @@ from .config import load_config
 from .data import ensure_tables, load_stream, prepare
 from .model import load_checkpoint
 from .projection import Code, MomentAccumulator, exact_code, random_projection
+
+DTYPES_T = {"float32": torch.float32, "float16": torch.float16}
 from .store import Store
 from .util import Timer, gather_windows, pick_device
 
@@ -123,9 +125,11 @@ def embed_split(cfg, meta, model, code, split, tables, device):
             zdq = code.dequantize(q)
             store.znorm2[a:b] = (zdq * zdq).sum(1).cpu().numpy()
         else:
-            store.z[a:b] = z.cpu().numpy().astype(store.z.dtype)
-            zz = torch.from_numpy(store.z[a:b].astype(np.float32))
-            store.znorm2[a:b] = (zz * zz).sum(1).numpy()
+            zq = z.to(DTYPES_T[store.dtype])            # what gets stored; its norm (not z's) is what search uses
+            store.z[a:b] = zq.cpu().numpy()
+            zq = zq.float()
+            store.znorm2[a:b] = (zq * zq).sum(1).cpu().numpy()   # on GPU: a CPU torch op here cost 300 ms/batch with
+                                                                  # 128 OMP threads on a 16-vCPU pod
         store.next[a:b] = tok[:, 1:T + 1].reshape(-1).astype(np.uint16)
         store.argmax[a:b] = p.argmax(-1).view(-1).cpu().numpy().astype(np.uint16)
         store.entropy[a:b] = (-(p * logp).sum(-1)).view(-1).cpu().numpy().astype(np.float16)

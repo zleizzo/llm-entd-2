@@ -65,6 +65,9 @@ export RUNPOD_API_KEY=...        # from the RunPod console, Settings -> API Keys
 STOP_POD=1 LOG=/root/mvp.log nohup bash scripts/run_mvp.sh > /root/mvp.log 2>&1 &
 ```
 
+`run_mvp.sh` caps `OMP_NUM_THREADS` at 8: pods expose all host cores (128) under a ~16-vCPU quota, and torch's
+default 128 intra-op threads make small CPU ops take hundreds of ms.
+
 Stopping wipes the container disk (the stores), so only what was persisted to the network volume survives;
 delete the pod from the console afterwards. The stores can be regenerated from the persisted checkpoints.
 
