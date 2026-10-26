@@ -160,11 +160,13 @@ def store_variants(ctx):
 def stage_search(ctx, q):
     Zq, qn = query_vectors(ctx, q)
     ex = exclude_ranges(ctx, q)
-    for name, wmask in store_variants(ctx).items():
-        keep = ctx.pos_mask(wmask)
-        with Timer(f"search {name} ({int(wmask.sum())} windows)"):
-            bd, bi, cnt = search(ctx.store["train"], Zq, qn, ctx.ev["K"], ctx.radii2, exclude=ex, keep=keep,
-                                 chunk=ctx.ev["chunk"], device=ctx.device)
+    variants = store_variants(ctx)
+    keeps = {name: ctx.pos_mask(wmask) for name, wmask in variants.items()}
+    desc = ", ".join(f"{name}={int(wmask.sum())}w" for name, wmask in variants.items())
+    with Timer(f"search [{desc}] (one pass over the store)"):   # a pass is ~30 min at tier 1; variants share it
+        res = search(ctx.store["train"], Zq, qn, ctx.ev["K"], ctx.radii2, exclude=ex, keeps=keeps,
+                     chunk=ctx.ev["chunk"], device=ctx.device)
+    for name, (bd, bi, cnt) in res.items():
         np.savez(ctx.path(f"search_{name}.npz"), d2=bd.numpy(), idx=bi.numpy(), counts=cnt.numpy())
 
 

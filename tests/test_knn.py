@@ -66,8 +66,29 @@ def test_radius_hist():
         assert torch.equal(hist[:, ri].long(), ref)
 
 
+def test_multi_keep_matches_single():
+    """search(keeps=...) must equal running search once per keep mask."""
+    torch.manual_seed(1)
+    N, d, Q, K = 5000, 16, 37, 50
+    Z = torch.randn(N, d); Zq = torch.randn(Q, d)
+    src = ArraySource(Z.numpy())
+    qn = (Zq * Zq).sum(1)
+    rng = np.random.default_rng(0)
+    keeps = {"full": np.ones(N, bool), "half": rng.random(N) < 0.5, "sparse": rng.random(N) < 0.02}
+    excl = np.stack([rng.integers(0, N - 10, Q), np.zeros(Q, np.int64)], 1); excl[:, 1] = excl[:, 0] + 7
+    radii2 = [0.5, 2.0, 10.0]
+    multi = search(src, Zq, qn, K, radii2, exclude=excl, keeps=keeps, chunk=777)
+    for name, kp in keeps.items():
+        bd, bi, cnt = search(src, Zq, qn, K, radii2, exclude=excl, keep=kp, chunk=777)
+        md, mi, mc = multi[name]
+        assert torch.equal(bi, mi) and torch.allclose(bd, md) and torch.equal(cnt, mc), name
+    print("multi-keep search matches single-keep")
+
+
+
 if __name__ == "__main__":
     test_search_matches_dense()
     test_search_small_chunks_and_fewer_than_K()
     test_radius_hist()
     print("knn tests ok")
+    test_multi_keep_matches_single()

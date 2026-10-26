@@ -25,6 +25,8 @@ export HF_HOME=${HF_HOME:-/root/hf}
 # Pods see all host cores (nproc=128) but get a ~16-vCPU cgroup quota; torch would spawn 128 intra-op threads per
 # process and tiny CPU ops then take 100s of ms (measured 3x slowdown of the embed loop). Two pipelines share the quota.
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8} MKL_NUM_THREADS=${MKL_NUM_THREADS:-8}
+# Two eval processes share one GPU; without this the caching allocator fragmented to 70 GB reserved in one search process.
+export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
 
 cfg_name() { $PY -c "import sys; from entd.config import load_config; print(load_config(sys.argv[1])['name'])" "$1"; }
 MAIN_DIR=runs/$(cfg_name "$MAIN")

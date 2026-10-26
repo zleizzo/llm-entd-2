@@ -36,27 +36,32 @@ def _merge_flat(best_d, best_i, qi, vals, pidx, K):
     return best_d, best_i
 
 
-def search(src, Zq, qnorm2, K, radii2=None, exclude=None, keep=None, chunk=262144, device=None, verbose=False):
+def search(src, Zq, qnorm2, K, radii2=None, exclude=None, keep=None, chunk=262144, device=None, verbose=False,
+           keeps=None):
     """
     src: object with N, znorm2 (N,) numpy, z_chunk(a, b, device) -> (b-a, d) float32.
     Zq: (Q, d) float32 tensor on device; qnorm2: (Q,) float32 on device.
     radii2: list of squared radii -> counts (Q, R) over the full source (respecting masks).
     exclude: (Q, 2) int64 numpy [lo, hi) source-index ranges excluded per query.
     keep: (N,) bool numpy; False positions are ignored.
+    keeps: optional dict name -> keep mask. The distances are computed once per chunk and every variant is served from
+           them (one pass over the source instead of one per variant); returns dict name -> (best_d2, best_idx, counts).
     Returns best_d2 (Q, K), best_idx (Q, K) (-1 if fewer than K), counts (Q, R)  -- all CPU tensors.
     """
     device = device or Zq.device
     Q = Zq.shape[0]
     N = src.N
-    best_d = torch.full((Q, K), INF, device=device)
-    best_i = torch.full((Q, K), -1, dtype=torch.int64, device=device)
+    multi = keeps is not None
+    variants = dict(keeps) if multi else {"_": keep}
     R = 0 if radii2 is None else len(radii2)
-    counts = torch.zeros((Q, R), dtype=torch.int64, device=device)
     r2 = torch.tensor(list(radii2 or []), device=device, dtype=torch.float32)
+    st = {name: {"best_d": torch.full((Q, K), INF, device=device),
+                 "best_i": torch.full((Q, K), -1, dtype=torch.int64, device=device),
+                 "counts": torch.zeros((Q, R), dtype=torch.int64, device=device), "n_dense": 0, "n_flat": 0}
+          for name in variants}
     if exclude is not None:
         lo = torch.from_numpy(np.ascontiguousarray(exclude[:, 0])).to(device)
         hi = torch.from_numpy(np.ascontiguousarray(exclude[:, 1])).to(device)
-    n_dense = n_flat = 0
     for a in range(0, N, chunk):
         b = min(a + chunk, N)
         C = b - a
@@ -64,36 +69,46 @@ def search(src, Zq, qnorm2, K, radii2=None, exclude=None, keep=None, chunk=26214
         nc = torch.from_numpy(np.ascontiguousarray(src.znorm2[a:b])).to(device).float()
         d2 = qnorm2[:, None] + nc[None, :] - 2.0 * (Zq @ Zc.T)
         d2.clamp_(min=0.0)
-        if keep is not None:
-            kc = torch.from_numpy(np.ascontiguousarray(keep[a:b])).to(device)
-            d2.masked_fill_(~kc[None, :], INF)
         if exclude is not None:
             pos = torch.arange(a, b, device=device)
             m = (pos[None, :] >= lo[:, None]) & (pos[None, :] < hi[:, None])
             d2.masked_fill_(m, INF)
-        for ri in range(R):
-            counts[:, ri] += (d2 < r2[ri]).sum(1)
-        thr = best_d[:, -1]
-        surv = d2 < thr[:, None]
-        n_surv = int(surv.sum())
-        if n_surv == 0:
-            continue
-        if n_surv > Q * K // 4:
-            kk = min(K, C)
-            vals, idx = torch.topk(d2, kk, dim=1, largest=False)
-            cat_d = torch.cat([best_d, vals], 1)
-            cat_i = torch.cat([best_i, idx + a], 1)
-            best_d, order = torch.topk(cat_d, K, dim=1, largest=False)
-            best_i = torch.gather(cat_i, 1, order)
-            n_dense += 1
-        else:
-            qi, ci = surv.nonzero(as_tuple=True)
-            best_d, best_i = _merge_flat(best_d, best_i, qi, d2[qi, ci], ci + a, K)
-            n_flat += 1
+            del m
+        for name, kp in variants.items():
+            v = st[name]
+            if kp is None:
+                d2v = d2
+            else:
+                kc = torch.from_numpy(np.ascontiguousarray(kp[a:b])).to(device)
+                d2v = d2.masked_fill(~kc[None, :], INF)
+            for ri in range(R):
+                # sum(dtype=) reduces the bool mask directly; a plain .sum() first promotes it to an int64 copy
+                # of the whole (Q, C) matrix (19.5 GB at Q=20k, C=131k) -> CUDA OOM
+                v["counts"][:, ri] += (d2v < r2[ri]).sum(1, dtype=torch.int64)
+            thr = v["best_d"][:, -1]
+            surv = d2v < thr[:, None]
+            n_surv = int(surv.sum(dtype=torch.int32))
+            if n_surv == 0:
+                continue
+            if n_surv > Q * K // 4:
+                kk = min(K, C)
+                vals, idx = torch.topk(d2v, kk, dim=1, largest=False)
+                cat_d = torch.cat([v["best_d"], vals], 1)
+                cat_i = torch.cat([v["best_i"], idx + a], 1)
+                v["best_d"], order = torch.topk(cat_d, K, dim=1, largest=False)
+                v["best_i"] = torch.gather(cat_i, 1, order)
+                v["n_dense"] += 1
+            else:
+                qi, ci = surv.nonzero(as_tuple=True)
+                v["best_d"], v["best_i"] = _merge_flat(v["best_d"], v["best_i"], qi, d2v[qi, ci], ci + a, K)
+                v["n_flat"] += 1
         if verbose and (a // chunk) % 50 == 0:
-            print(f"  [knn] {b}/{N} dense={n_dense} flat={n_flat}", flush=True)
-    best_i[~torch.isfinite(best_d)] = -1
-    return best_d.cpu(), best_i.cpu(), counts.cpu()
+            print(f"  [knn] {b}/{N} " + " ".join(f"{n}:dense={v['n_dense']},flat={v['n_flat']}" for n, v in st.items()), flush=True)
+    out = {}
+    for name, v in st.items():
+        v["best_i"][~torch.isfinite(v["best_d"])] = -1
+        out[name] = (v["best_d"].cpu(), v["best_i"].cpu(), v["counts"].cpu())
+    return out if multi else out["_"]
 
 
 def search_dense(Zs, ns, Zq, qn, K, exclude_mask=None):

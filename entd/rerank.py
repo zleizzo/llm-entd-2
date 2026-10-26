@@ -25,11 +25,13 @@ def dists_for_windows(model, stream, W, T, wids, offs, device, batch=64):
         u = uniq[i:i + batch]
         x = torch.from_numpy(gather_windows(stream, W[u], T)[:, :T]).to(device)
         logits, _, _ = model(x)
-        logp = F.log_softmax(logits.float(), -1)
         sel = np.nonzero((inv >= i) & (inv < i + batch))[0]
-        rows = logp[torch.as_tensor(inv[sel] - i, device=device), torch.as_tensor(offs[sel], device=device)]
+        # gather the needed (window, offset) rows first, then log_softmax: identical result, ~T x less work than a
+        # log_softmax over every position (this stage visits ~2M windows at tier 1)
+        rows = logits[torch.as_tensor(inv[sel] - i, device=device), torch.as_tensor(offs[sel], device=device)]
+        rows = F.log_softmax(rows.float(), -1)
         if out is None:
-            out = torch.empty((len(wids), logp.shape[-1]), device=device, dtype=torch.float32)
+            out = torch.empty((len(wids), rows.shape[-1]), device=device, dtype=torch.float32)
         out[torch.as_tensor(sel, device=device)] = rows
     return out
 

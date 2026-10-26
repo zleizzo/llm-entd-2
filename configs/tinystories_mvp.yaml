@@ -48,5 +48,5 @@ eval:
   fidelity_queries: 2000
   fidelity_d_sweep: [16, 32, 64, 128]
   query_batch: 128
-  chunk: 131072              # search holds a (queries x chunk) fp32 distance matrix (~10 GB here, ~20 GB peak);
-                             # two eval processes share the GPU in run_mvp.sh, so keep this <= 131072
+  chunk: 65536               # search holds a (queries x chunk) fp32 distance matrix (5 GB here) plus a few bool/int
+                             # temporaries of that shape; two eval processes share the GPU in run_mvp.sh
