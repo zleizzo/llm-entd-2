@@ -45,13 +45,18 @@ tail -f /root/mvp.log
 ```
 
 `run_mvp.sh` trains for 2 epochs (~1 h; `entd.train` saves a model-only `ckpt_epoch<k>.pt` at every epoch
-boundary), then runs embed + the full eval suite twice: on the final model (`configs/tinystories_mvp.yaml`,
-`runs/tinystories_mvp/`) and on the epoch-1 checkpoint (`configs/tinystories_mvp_ep1.yaml`, which `extends`
+boundary), and runs embed + the full eval suite on two models: the final one (`configs/tinystories_mvp.yaml`,
+`runs/tinystories_mvp/`) and the epoch-1 checkpoint (`configs/tinystories_mvp_ep1.yaml`, which `extends`
 the main config and sets `model.checkpoint`; `runs/tinystories_mvp_ep1/`). Both share the data, window
 tables, and trained/untrained split; the epoch-1 eval derives its `last_seen_step` from the main run's
-schedule truncated at that checkpoint's step. After training and after each eval the small artifacts
-(`results/`, checkpoints, `train_log.jsonl`, `projection.pt`, `schedule.npy`, the log) are copied to
-`PERSIST_DIR` (default `/workspace/entd2`), also on failure.
+schedule truncated at that checkpoint's step.
+
+With `PARALLEL=1` (default) the epoch-1 pipeline starts as soon as `ckpt_epoch1.pt` appears, overlapping the
+second training epoch, and the final-model pipeline starts when training ends, so the two pipelines share
+the GPU (`eval.chunk` is kept at 131072 so two search processes fit in 80 GB). Each pipeline logs to
+`runs/<name>/pipeline.log`; `PARALLEL=0` runs everything in sequence. After training and after each pipeline
+the small artifacts (`results/`, checkpoints, `train_log.jsonl`, `pipeline.log`, `projection.pt`,
+`schedule.npy`, the main log) are copied to `PERSIST_DIR` (default `/workspace/entd2`), also on failure.
 
 To stop the pod automatically when everything is done:
 

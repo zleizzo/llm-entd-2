@@ -29,7 +29,7 @@ def entropy(p):
 
 def hist_from_ids(ids, V, k=None):
     """ids: (Q, K) long (−1 = missing) -> (Q, V) empirical histograms over the first k columns."""
-    ids = ids[:, :k] if k is not None else ids
+    ids = (ids[:, :k] if k is not None else ids).long()   # scatter_add_ needs int64 (NumPy 1 yields int32 for uint16 ids with -1)
     Q = ids.shape[0]
     out = torch.zeros((Q, V), device=ids.device)
     valid = ids >= 0

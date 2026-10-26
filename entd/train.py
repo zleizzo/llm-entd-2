@@ -18,6 +18,12 @@ from .model import build_model
 from .util import autocast_ctx, gather_windows, pick_device
 
 
+def save_atomic(obj, path):
+    """Write to path.tmp then rename, so a concurrent reader never sees a partial checkpoint."""
+    torch.save(obj, path + ".tmp")
+    os.replace(path + ".tmp", path)
+
+
 def get_lr(step, total, cfg):
     t = cfg["train"]
     if step < t["warmup_steps"]:
@@ -126,15 +132,15 @@ def main(cfg_path):
             print(f"[eval] {rec}", flush=True)
             log.write(json.dumps(rec) + "\n")
             log.flush()
-            torch.save({"model": raw.state_dict(), "optimizer": opt.state_dict(), "step": step + 1,
-                        "model_args": raw.config.__dict__, "cfg": plain_cfg}, ck_path)
+            save_atomic({"model": raw.state_dict(), "optimizer": opt.state_dict(), "step": step + 1,
+                         "model_args": raw.config.__dict__, "cfg": plain_cfg}, ck_path)
         if master and steps_per_epoch > 0 and (step + 1) % steps_per_epoch == 0:
             # Model-only snapshot at the end of each epoch (ckpt_epoch1.pt, ...); point another config's
             # model.checkpoint at it to embed/eval an earlier model with the same data/split.
             ep = (step + 1) // steps_per_epoch
-            torch.save({"model": raw.state_dict(), "step": step + 1, "epoch": ep,
-                        "model_args": raw.config.__dict__, "cfg": plain_cfg},
-                       os.path.join(cfg["work_dir"], f"ckpt_epoch{ep}.pt"))
+            save_atomic({"model": raw.state_dict(), "step": step + 1, "epoch": ep,
+                         "model_args": raw.config.__dict__, "cfg": plain_cfg},
+                        os.path.join(cfg["work_dir"], f"ckpt_epoch{ep}.pt"))
             print(f"[train] saved ckpt_epoch{ep}.pt at step {step + 1}", flush=True)
     if ddp:
         torch.distributed.destroy_process_group()
