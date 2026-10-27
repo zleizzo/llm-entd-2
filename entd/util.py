@@ -10,6 +10,10 @@ def pick_device(name="auto"):
     if name and name != "auto":
         return torch.device(name)
     if torch.cuda.is_available():
+        # TF32 matmuls for fp32 inference (embed/eval/rerank forward passes): ~8x faster on A100 than strict fp32,
+        # and far finer than the bf16 autocast the model was trained with. Training uses autocast anyway.
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
         return torch.device("cuda")
     if torch.backends.mps.is_available():
         return torch.device("mps")
